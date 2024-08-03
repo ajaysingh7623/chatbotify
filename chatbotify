@@ -1,0 +1,145 @@
+import axios from "axios";
+import React, { useState } from "react";
+import ChatBot from "react-chatbotify";
+import MockAdapter from "axios-mock-adapter";
+const mock = new MockAdapter(axios);
+
+// Mock the API response for the POST request
+mock.onPost("/api/start").reply(200, {
+  session_history: {
+    quote: "D24D9Q726-01",
+    quoteID: "40000045306",
+  },
+  bot_response:
+    "Use this link to open the quote (https://cpq-itg.ext.hp.com/page/q/D24D9Q726-01)",
+  next_step_recommendation: "quote",
+  // "Use this link to open the quote (https://cpq-itg.ext.hp.com/page/q/D24D9Q726-01)",
+});
+function App() {
+  const [sessionHistory, setSessionHistory] = useState({
+    quote: "",
+    quoteID: "",
+  });
+  const [urlState, setUrlState] = useState("");
+  const [paths, setPaths] = React.useState([]);
+
+  const [optionsEnabled, setOptionsEnabled] = useState(false);
+  console.log(urlState, optionsEnabled, "data");
+  async function run(params) {
+    const payload = {
+      userinput: params?.userInput,
+      history: {
+        quote: sessionHistory?.quote || "",
+        quoteID: sessionHistory?.quoteID || "",
+      },
+    };
+    const config = {
+      headers: {
+        "Content-Type": "application/json",
+      },
+    };
+    try {
+      const response = await axios.post("/api/start", payload, {
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.data) {
+        const quote = response?.data?.session_history.quote;
+        const quoteID = response?.data?.session_history.quoteID;
+        setSessionHistory((prev) => ({
+          ...prev,
+          quote: quote,
+          quoteID: quoteID,
+        }));
+        const outputMessage =
+          response?.data?.bot_response +
+          " " +
+          response?.data?.next_step_recommendation;
+        const urlMatch = outputMessage.match(/https:\/\/[^\s\)]+/);
+        if (urlMatch) {
+          setUrlState(urlMatch[0]);
+          setOptionsEnabled(true);
+          params.streamMessage(outputMessage);
+        } else {
+          setUrlState("");
+          setOptionsEnabled(false);
+          params.streamMessage(outputMessage);
+        }
+
+        // params.streamMessage(outputMessage);
+      } else {
+        console.error("Unexpected response structure:", response);
+        return "Unexpected response from server.";
+      }
+    } catch (error) {
+      console.error("Error during Axios request:", error);
+      return "An error occurred while processing your request.";
+    }
+  }
+  const flow = {
+    start: {
+      message: "Hello, I am CPQ ChatBot, How Can I Help You!",
+      path: "model_loop",
+    },
+    model_loop: {
+      message: (params) => {
+        run(params);
+      },
+      transition: { duration: 0 },
+      path: "response_handler",
+    },
+    response_handler: {
+      options: () => {
+        if (optionsEnabled == true) {
+          return [
+            <a href="https://www.google.com/" target="_blank">
+              Yes
+            </a>,
+            "No",
+          ];
+        } else {
+          return [];
+        }
+      },
+      path: "model_loop",
+    },
+  };
+
+  const themes = [
+    { id: "solid_purple_haze", version: "0.1.0" },
+    { id: "simple_blue", version: "0.1.0" },
+  ];
+
+  return (
+    <ChatBot
+      themes={themes}
+      settings={{
+        audio: { disabled: false },
+        voice: { disabled: false },
+        chatHistory: { storageKey: "example_voice" },
+        header: {
+          title: (
+            <div
+              style={{
+                cursor: "pointer",
+                margin: 0,
+                fontSize: 20,
+                fontWeight: "bold",
+              }}
+            >
+              IQ BOT
+            </div>
+          ),
+        },
+
+        // chatButton: {
+        //   icon: `${ASSETS_URL}/images/Hplogo.png`,
+        // },
+      }}
+      flow={flow}
+    />
+  );
+}
+export default App;
